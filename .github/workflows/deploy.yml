@@ -1,45 +1,55 @@
-# .github/workflows/deploy.yml
-
 name: Deploy to Google Apps Script
 
 on:
   push:
     branches:
-      - main  # 'main' 브랜치에 push 될 때만 실행됩니다. (master 라면 master로 수정)
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      # 1. 저장소의 코드를 runner(가상머신)로 가져옵니다.
       - name: Checkout
         uses: actions/checkout@v3
 
-      # 2. Node.js 환경을 설정합니다.
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18' # Node.js 버전 지정
+          node-version: '18'
 
-      # 3. clasp를 설치합니다.
       - name: Install Clasp
         run: npm install -g @google/clasp
 
-      # 4. GitHub Secret을 이용해 .clasprc.json 인증 파일을 생성
       - name: Create .clasprc.json
         run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
 
-      # 5. 모든 하위 폴더를 돌면서 clasp push 실행 (핵심 변경 부분!)
+      # 👇 [수정됨] 디버깅 정보를 출력하고 에러 발생 시에도 멈추지 않고 원인을 보여줌
       - name: Push all projects
         run: |
-          # 현재 폴더(root)에 있는 모든 하위 디렉토리를 찾습니다.
+          echo "📂 현재 디렉토리 파일 목록 확인:"
+          ls -la
+          
+          echo "🚀 하위 폴더 탐색 시작..."
+          
+          # 하위 디렉토리를 순회
           for dir in */; do
-            # 해당 폴더 안에 .clasp.json 파일이 있는지 확인합니다.
-            if [ -f "$dir/.clasp.json" ]; then
-              echo "Deploying $dir..."
-              cd "$dir"
-              clasp push --force
-              cd .. # 다시 상위 폴더로 복귀
+            # 디렉토리 이름에서 끝의 / 제거 (ex: project/ -> project)
+            dirname=${dir%/}
+            
+            echo "-----------------------------------"
+            echo "🔍 Checking folder: $dirname"
+            
+            if [ -f "$dirname/.clasp.json" ]; then
+              echo "✅ .clasp.json 발견! 배포를 시작합니다."
+              
+              cd "$dirname"
+              
+              # 실제 배포 명령 (실패 시 에러 메시지 출력)
+              clasp push --force || { echo "❌ $dirname 배포 실패!"; exit 1; }
+              
+              cd ..
+            else
+              echo "⚠️ $dirname 폴더에 .clasp.json이 없습니다. 스킵합니다."
             fi
           done
         shell: bash
