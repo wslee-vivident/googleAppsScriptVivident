@@ -1,0 +1,45 @@
+# .github/workflows/deploy.yml
+
+name: Deploy to Google Apps Script
+
+on:
+  push:
+    branches:
+      - main  # 'main' 브랜치에 push 될 때만 실행됩니다. (master 라면 master로 수정)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 저장소의 코드를 runner(가상머신)로 가져옵니다.
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      # 2. Node.js 환경을 설정합니다.
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18' # Node.js 버전 지정
+
+      # 3. clasp를 설치합니다.
+      - name: Install Clasp
+        run: npm install -g @google/clasp
+
+      # 4. GitHub Secret을 이용해 .clasprc.json 인증 파일을 생성
+      - name: Create .clasprc.json
+        run: echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+
+      # 5. 모든 하위 폴더를 돌면서 clasp push 실행 (핵심 변경 부분!)
+      - name: Push all projects
+        run: |
+          # 현재 폴더(root)에 있는 모든 하위 디렉토리를 찾습니다.
+          for dir in */; do
+            # 해당 폴더 안에 .clasp.json 파일이 있는지 확인합니다.
+            if [ -f "$dir/.clasp.json" ]; then
+              echo "Deploying $dir..."
+              cd "$dir"
+              clasp push --force
+              cd .. # 다시 상위 폴더로 복귀
+            fi
+          done
+        shell: bash
