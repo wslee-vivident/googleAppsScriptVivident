@@ -15,7 +15,7 @@ function getSpreadSheetData()
 
 function onOpen()
 {
-  //when google spreadSheet is opened, 1, 2, 3, Go!
+  //when google spreadSheet is opened,
   var ui = SpreadsheetApp.getUi();
   var menu = ui.createMenu('DataManager');
   menu.addItem('DataManager', 'showDialog');
