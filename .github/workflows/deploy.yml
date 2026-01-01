@@ -20,16 +20,16 @@ jobs:
       - name: Install Clasp
         run: npm install -g @google/clasp
 
-      # 4. (수정됨) Node.js를 사용하여 안전하게 파일 생성 (따옴표/특수문자 깨짐 방지)
+      # 4. (수정됨) Node.js 코드 오류 수정 완료 (path 모듈 추가)
       - name: Create .clasprc.json
         env:
           CLASPRC_SECRET: ${{ secrets.CLASPRC_JSON }}
         run: |
-          node -e "const fs = require('fs'); const os = require('os'); const path = path.join(os.homedir(), '.clasprc.json'); fs.writeFileSync(path, process.env.CLASPRC_SECRET);"
+          node -e "const fs = require('fs'); const os = require('os'); const path = require('path'); const targetPath = path.join(os.homedir(), '.clasprc.json'); fs.writeFileSync(targetPath, process.env.CLASPRC_SECRET);"
           
-          # 파일이 잘 만들어졌는지 확인
+          # 파일 생성 확인
           if [ -s ~/.clasprc.json ]; then
-            echo "✅ 파일 생성 성공 (크기: $(wc -c < ~/.clasprc.json) bytes)"
+            echo "✅ .clasprc.json 파일 생성 성공"
           else
             echo "❌ 파일 생성 실패"
             exit 1
