@@ -1,0 +1,20 @@
+{
+  "timeZone": "Asia/Seoul",
+  "dependencies": {},
+  "exceptionLogging": "STACKDRIVER",
+  "runtimeVersion": "V8",
+  "sheets": {
+    "macros": [
+      {
+        "menuName": "validateJsonColumns",
+        "functionName": "validateJsonColumns",
+        "defaultShortcut": "Ctrl+Alt+Shift+9"
+      },
+      {
+        "menuName": "syncToDevAdmin",
+        "functionName": "syncToDevAdmin",
+        "defaultShortcut": "Ctrl+Alt+Shift+1"
+      }
+    ]
+  }
+}

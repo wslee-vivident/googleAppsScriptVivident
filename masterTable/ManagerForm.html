@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<script>
+  let selectedItems = []; // The Array selected items from checkboxes 'Name'
+  let selectedItemIDs = []; // The array selected items from checkboxes 'Value : ID'
+  let allItemAmount = 0;
+
+  function loadCheckboxes() {
+    google.script.run.withSuccessHandler(function(data) {
+      allItemAmount = data.length;
+      var container = document.getElementById("checkboxContainer");
+      container.innerHTML = "";
+
+      // Add an All checkbox
+      var allLabel = document.createElement("label");
+      allLabel.style.display = "flex";
+      allLabel.style.alignItems = "center";
+      allLabel.style.minWidth = "320px";
+
+      var allCheckbox = document.createElement("input");
+      allCheckbox.type = "checkbox";
+      allCheckbox.id = "selectAllCheckbox";
+      allCheckbox.onclick = function () {
+        handleCheckboxClick(this);
+      };
+
+      allLabel.appendChild(allCheckbox);
+      allLabel.appendChild(document.createTextNode(" ALL"));
+      container.appendChild(allLabel);
+
+      var rowDiv;
+      data.forEach((row, index) => {
+        if(index % 3 === 0) {
+          rowDiv = document.createElement("div");
+          rowDiv.style.display = "flex";
+          rowDiv.style.gap = "20px";
+          rowDiv.style.width = "100%";
+          container.appendChild(rowDiv);
+        }
+
+        var label = document.createElement("label");
+        label.style.display = "Flex";
+        label.style.alignItems = "center";
+        label.style.minWidth = "320px";
+
+        var checkbox = document.createElement("input");
+
+        checkbox.type = "checkbox";
+        checkbox.value = row[1]; // Table Name -> Label of Checkbox
+        checkbox.name = "items";
+        checkbox.dataset.id = row[0]; // SpreadSheet File ID value;
+
+        //eventListener : onclick of CheckBox
+        checkbox.onclick = function() {
+          handleCheckboxClick(this);
+        };
+
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(" " + row[1]));
+        
+        if(rowDiv) {
+          rowDiv.appendChild(label);
+        }
+        
+      });
+    }).getSpreadSheetData();
+  }
+
+  function handleCheckboxClick(checkbox) {
+    let allCheckbox = document.getElementById("selectAllCheckbox");
+    let checkboxes = document.querySelectorAll("input[name='items']");
+
+    if(checkbox === allCheckbox)
+    {
+      if(checkbox.checked) {
+        checkboxes.forEach(cb => cb.checked = true);
+      }
+      else {
+        checkboxes.forEach(cb => cb.checked = false);
+      }
+    }
+    else {
+      if(!checkbox.checked) {
+        allCheckbox.checked = false;
+      }
+    }
+
+    updateSelectedItems();
+  }
+
+  function updateSelectedItems() {
+    selectedItems = [];
+    selectedItemIDs = [];
+
+    document.querySelectorAll("input[name='items']:checked").forEach(checkbox => {
+      selectedItems.push(checkbox.value);
+      selectedItemIDs.push(checkbox.dataset.id);
+    });
+  }
+</script>
+
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>데이터 선택</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-width: 400px;
+        }
+        .input-group input {
+            width: 100%;
+            height: 30px;
+            padding: 5px;
+            font-size: 14px;
+        }
+        .checkbox-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 200px;
+        }
+        .button-container {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .button-container button {
+            width: 48%;
+            padding: 12px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body onload="loadCheckboxes()">
+  <div class="input-group">
+    <label for="worker">작업자 이름</label>
+    <input type="text" id="worker">
+
+    <label for="log">작업 로그</label>
+    <input type="text" id="log">
+  </div>
+
+  <h3>데이터 테이블 선택</h3>
+  <div class="checkbox-container" id="checkboxContainer">
+  </div>
+
+  <div class="button-container">
+    <button onclick="importTableValues()">데이터 마스터로 IMPORT</button>
+    <button onclick="exportTableValues()">마스터 데이터 EXPORT</button>
+  </div>
+</body>
+<script>
+      function importTableValues() {
+        updateSelectedItems();
+        
+        var logMethod = "writeUpdateLog";
+        var workerLabel = document.getElementById("worker").value;
+        var logLabel = document.getElementById("log").value;
+        var procedureType = "IMPORT"
+        var tableItems = selectedItems.length === allItemAmount ? ["ALL"] : selectedItems;
+        
+        google.script.run[logMethod](workerLabel, logLabel, procedureType, tableItems);
+        google.script.run.withSuccessHandler(function(response) {
+          console.log("임포트 실행 완료" + response);
+          google.script.host.close();
+        }).importTableFromExternalSheets(selectedItemIDs);
+      }
+
+      function exportTableValues() {
+        updateSelectedItems();
+
+        var logMethod = "writeUpdateLog";
+        var workerLabel = document.getElementById("worker").value;
+        var logLabel = document.getElementById("log").value;
+        var procedureType = "EXPORT"
+        var tableItems = selectedItems.length === allItemAmount ? ["ALL"] : selectedItems;
+        
+        google.script.run[logMethod](workerLabel, logLabel, procedureType, tableItems);
+        google.script.run.withSuccessHandler(function(response) {
+          console.log("익스포트 실행 완료" + response);
+          google.script.host.close();
+        }).exportTableToExternalSheets(selectedItemIDs);
+        
+      }
+    </script>
+</html>
