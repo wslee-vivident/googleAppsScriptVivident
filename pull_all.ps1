@@ -1,4 +1,4 @@
-Write-Host "⚠️ caution: did you push your code in Git repository? code will be rewrote." -ForegroundColor Yellow
+Write-Host "caution: did you push your code in Git repository? code will be rewrote." -ForegroundColor Yellow
 
 # search for subdirectories
 Get-ChildItem -Directory | ForEach-Object {
