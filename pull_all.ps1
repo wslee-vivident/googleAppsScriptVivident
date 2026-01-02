@@ -6,7 +6,7 @@ Get-ChildItem -Directory | ForEach-Object {
     
     # .clasp.json File Check
     if (Test-Path "$folderPath\.clasp.json") {
-        Write-Host "⬇️ (Pull): $($_.Name)" -ForegroundColor Cyan
+        Write-Host "(Pull): $($_.Name)" -ForegroundColor Cyan
         
         # move to the target foler
         Push-Location $folderPath
@@ -17,7 +17,7 @@ Get-ChildItem -Directory | ForEach-Object {
         # move back to the original folder
         Pop-Location
         
-        Write-Host "✅ Complete: $($_.Name)" -ForegroundColor Green
+        Write-Host "Complete: $($_.Name)" -ForegroundColor Green
         Write-Host "--------------------------------"
     }
 }
