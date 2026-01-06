@@ -172,3 +172,33 @@ function mergeSheetDataToTargetSheet(targetSheet, inputData) {
     ]);
   }
 }
+
+function convertInnerThoughtToObj_(text, speakerName) {
+    // 1. 내부 데이터 파싱 ({ 대상: 속마음 })
+    const contentObj = {};
+  
+    if (text && text !== "") {
+        const regex = /\[([^,]+),\s*([\s\S]*?)\]/g;
+        let match;
+        while ((match = regex.exec(text)) !== null) {
+        const targetName = match[1].trim();
+        const thought = match[2].trim();
+        contentObj[targetName] = thought;
+        }
+    }
+
+    // 데이터가 비어있으면 빈 객체 반환
+    if (Object.keys(contentObj).length === 0) {
+        return {};
+    }
+
+    // 2. 화자 이름에 따라 동적 키 생성 (예: 주인공_innerThought)
+    // speakerName이 없으면 기본값 'unknown_innerThought' 사용
+    const dynamicKey = (speakerName || "unknown") + "_innerThought";
+
+    // 3. 최종 객체 생성
+    const result = {};
+    result[dynamicKey] = contentObj;
+
+    return result;
+}

@@ -131,6 +131,12 @@ function storyGenerate() {
             ? lookupCompositeOne(modelIndex, {"id" : speaker})
             : "";
 
+        var inputInnerThought = rowData[inputH["innerThought"]];
+        var innerThoughtObj = {};
+        if(inputInnerThought.toString().trim() !== "") {
+            innerThoughtObj = convertInnerThoughtToObj_(inputInnerThought, speaker);
+        }
+
         let inputLocation = rowData[inputH["location"]];
         let defaultLocation = sceneInfoObj[rowData[inputH["sceneId"]]]?.location || "";
         let selectedLocation = "";
@@ -166,6 +172,7 @@ function storyGenerate() {
         dataRow[resultH["level"]] = rowData[inputH["level"]];
         dataRow[resultH["direction"]] = rowData[inputH["direction"]];
         dataRow[resultH["location"]] = location;
+        dataRow[resultH["innerThought"]] = innerThoughtObj;
         dataRow[resultH["narrationTone"]] = sceneInfoObj[rowData[inputH["sceneId"]]]?.narrationTone || "";
         dataRow[resultH["writingStyle"]] = sceneInfoObj[rowData[inputH["sceneId"]]]?.writingStyle || "";
         dataRow[resultH["introContext"]] = sceneInfoObj[rowData[inputH["sceneId"]]]?.introContext || "";
@@ -175,30 +182,21 @@ function storyGenerate() {
 
     }
 
-    for(const [index, rows] of resultData.entries()) {
-      Logger.log(`${index} : ${rows.toString()}`);
-    }
-
-    /*
+    
     const payload = {
-        data : originData,
+        data : resultData,
         dictionary : dictionary,
-        sheetName : targetSheet.toString(),
+        sheetName : "dialog_generator",
         sheetId : fileId,
         promptFile : promptFile
     };
 
-    Logger.log(JSON.stringify(payload.dictionary, null, 2));
-
-    /*
     const options = {
         method : "post",
         contentType : "application/json",
         payload : JSON.stringify(payload),
         muteHttpExceptions : true,
     };
-
-    Logger.log(JSON.stringify(payload, null, 2));
     
     try {
         const response = UrlFetchApp.fetch(endPoint, options);
@@ -207,5 +205,4 @@ function storyGenerate() {
     } catch (e) {
         Logger.log(`Error sending : ${e.message}`);
     }
-    */
 }
