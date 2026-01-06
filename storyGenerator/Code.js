@@ -4,3 +4,9 @@ function onOpen() {
   menu.addItem('Generate', 'storyGenerate');
   menu.addToUi();
 }
+
+function forcePermission() {
+  // 아무 의미 없는 요청이지만, 권한 팝업을 유도합니다.
+  UrlFetchApp.fetch("https://www.google.com");
+  console.log("권한 획득 성공!");
+}

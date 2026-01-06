@@ -191,6 +191,8 @@ function storyGenerate() {
         promptFile : promptFile
     };
 
+    Logger.log(JSON.stringify(payload.data, null, 2));
+
     const options = {
         method : "post",
         contentType : "application/json",
