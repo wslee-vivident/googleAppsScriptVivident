@@ -182,6 +182,8 @@ function storyGenerate() {
 
     }
 
+    resultData.unshift(resultHeader);
+
     
     const payload = {
         data : resultData,
