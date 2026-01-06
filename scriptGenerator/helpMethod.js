@@ -11,7 +11,7 @@ function loadRefData(masterFile) {
 
   refLists.forEach(name => {
     const sheet = masterFile.getSheetByName(name);
-    if(!sheet) throw new Error("Missing Sheet: " + name);
+    if(!sheet) throw new Error("시트 없음: " + name);
 
     const values = sheet.getDataRange().getValues();
     const header = values[0] || [];
@@ -34,11 +34,11 @@ function buildLookupCompositeOne(
 
    // 컬럼 존재 체크
    if(!(valueColumn in columnIndex)) {
-    throw new Error(`[buildIndexBundle] value column not found : ${valueColumn}`);
+    throw new Error(`[buildIndexBundle] 값을 찾을 수 없습니다. : ${valueColumn}`);
    }
    keyColumns.forEach(col => {
     if(!(col in columnIndex)) {
-      throw new Error(`[buildIndexBundle] key column not found : ${col}`);
+      throw new Error(`[buildIndexBundle] 키를 찾을 수 없습니다. : ${col}`);
     }
    });
 
@@ -57,7 +57,7 @@ function buildLookupCompositeOne(
 
     if (indexMap[compositeKey] !== undefined) {
       throw new Error(
-        `[buildIndexBundle] Duplicate key: ${compositeKey} (row ${rowIndex + 4})`
+        `[buildIndexBundle] 키가 중복됩니다.: ${compositeKey} (row ${rowIndex + 4})`
       );
     }
     indexMap[compositeKey] = row[valueColIndex];
@@ -75,7 +75,7 @@ function buildLookupMany(
   headerRow.forEach((h, i) => (columnIndex[String(h).trim()] = i));
 
   if(!(keyColumn in columnIndex)) {
-    throw new Error(`[buildSingleColumnIndex] column not found : ${keyColumn}`);
+    throw new Error(`[buildSingleColumnIndex] 컬럼이 없습니다. : ${keyColumn}`);
   }
 
   const keyIndex = columnIndex[keyColumn];

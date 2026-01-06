@@ -286,6 +286,9 @@ function writeSceneScript(targetSheetId, inputData, masterFile) {
         ? lookupCompositeOne(enumIndex, {"#Name" : inputTimeOfDay})
         : "";
       Logger.log(timeOfDay_space);
+      if(timeOfDay_space === "") {
+        throw new Error("장소에 입력한 시간대가 없습니다. : " + inputSpaceId);
+      }
       
        const assetLookupKey = [
           space_id,
