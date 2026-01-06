@@ -1,11 +1,6 @@
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   var menu = ui.createMenu('Story');
-  menu.addItem('Generate', 'onStoryGenerate');
+  menu.addItem('Generate', 'storyGenerate');
   menu.addToUi();
-}
-
-function onStoryGenerate() {
-    const sheetName = SpreadsheetApp.getActiveSheet().getSheetName();
-    storyGenerate(sheetName);
 }

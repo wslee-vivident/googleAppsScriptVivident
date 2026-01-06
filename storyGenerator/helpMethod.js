@@ -110,8 +110,15 @@ function convertToObject_(values) {
 function arrayToDictionary(arrayData, keyColumn) {
   return arrayData.reduce((acc, item) => {
     const key = item[keyColumn];
+    
     if(key) {
-      acc[key] = item;
+      // 구조 분해 할당:
+      // [keyColumn]에 해당하는 값은 _ (사용하지 않음) 변수에 넣고,
+      // 나머지 모든 속성은 rest 변수에 담습니다.
+      const { [keyColumn]: _, ...rest } = item;
+      
+      // key를 키로 하고, keyColumn이 제거된 rest 객체를 값으로 할당
+      acc[key] = rest;
     }
     return acc;
   }, {});
