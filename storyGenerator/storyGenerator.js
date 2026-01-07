@@ -4,6 +4,7 @@ function storyGenerate() {
 
     var fileId = PropertiesService.getScriptProperties().getProperty("FILE_ID");
     var masterFile = SpreadsheetApp.openById(fileId);
+    var sheetid = SpreadsheetApp.getActive().getId();
 
     var values = SpreadsheetApp.getActive().getSheetByName("dialog_generator").getDataRange().getValues();
     var inputHeader = values[0];
@@ -191,7 +192,7 @@ function storyGenerate() {
         data : resultData,
         dictionary : dictionary,
         sheetName : "dialog_generator",
-        sheetId : fileId,
+        sheetId : sheetid,
         promptFile : promptFile
     };
 
