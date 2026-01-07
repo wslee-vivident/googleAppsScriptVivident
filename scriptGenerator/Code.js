@@ -218,7 +218,8 @@ function writeSceneScript(targetSheetId, inputData, masterFile) {
       const key = textKeyList[rowIndex].join("_");
       returnTable.push([
         key,
-        text
+        text,
+        inputSpeaker
       ]);
 
       textKey = key;
@@ -352,7 +353,7 @@ function generateTextKey(targetSheet, inputData) {
     }
   });
 
-  inputData.forEach( ([key, koText]) => {
+  inputData.forEach( ([key, koText, speaker]) => {
     const trimmedKey = String(key).trim();
 
     if(keyMap.has(trimmedKey)) {
@@ -371,6 +372,7 @@ function generateTextKey(targetSheet, inputData) {
       newRow[localizationIdx["#type"]] = "characterDialog";
       newRow[localizationIdx["#translate"]] = "false";
       newRow[localizationIdx["ko-KR"]] = koText;
+      newRow[localizationIdx["#character"]] =speaker;
 
       fullData.push(newRow);
     }

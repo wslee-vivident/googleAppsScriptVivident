@@ -107,7 +107,8 @@ function storyGenerate() {
       "narrationTone",
       "writingStyle",
       "introContext",
-      "model"
+      "model",
+      "temperature"
     ];
     const resultH = makeHeaderIndex_(resultHeader);
     const validSceneIdSet = new Set(sceneIds);
@@ -177,6 +178,7 @@ function storyGenerate() {
         dataRow[resultH["writingStyle"]] = sceneInfoObj[rowData[inputH["sceneId"]]]?.writingStyle || "";
         dataRow[resultH["introContext"]] = sceneInfoObj[rowData[inputH["sceneId"]]]?.introContext || "";
         dataRow[resultH["model"]] = model;
+        dataRow[resultH["temperature"]] = rowData[inputH["temperature"]];
 
         resultData.push(dataRow);
 
