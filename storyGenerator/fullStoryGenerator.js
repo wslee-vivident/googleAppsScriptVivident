@@ -43,15 +43,6 @@ function fullStoryGenerate() {
         "id"
     );
 
-    const selectedColumn = [
-        inputH["sceneId"],
-        inputH["character"],
-        inputH["systemKind"],
-        inputH["DirectionWithContext"],
-        inputH["location"],
-        inputH["model"],
-        inputH["temperature"]
-    ]
     const sceneIds = values
         .filter((row) => String(row[inputH["isGenerate"]]).trim() === "true")
         .map((row) => row[inputH["sceneId"]]);
@@ -99,6 +90,7 @@ function fullStoryGenerate() {
     const resultHeader = [
       "sceneId",
       "character",
+      "level",
       "systemKind",
       "direction",
       "place",
@@ -172,6 +164,7 @@ function fullStoryGenerate() {
         const dataRow = new Array(resultHeader.length).fill("");
         dataRow[resultH["sceneId"]] = rowData[inputH["sceneId"]];
         dataRow[resultH["character"]] = character;
+        dataRow[resultH["level"]] = rowData[inputH["level"]];
         dataRow[resultH["systemKind"]] = system;
         dataRow[resultH["direction"]] = rowData[inputH["DirectionWithContext"]];
         dataRow[resultH["place"]] = place;
