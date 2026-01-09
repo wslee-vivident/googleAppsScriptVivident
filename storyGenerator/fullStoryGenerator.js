@@ -130,10 +130,10 @@ function fullStoryGenerate() {
 
         const inputLocation = rowData[inputH["location"]];
         const location_id = inputLocation
-            ? lookupCompositeOne(spaceIndex, {"id" : inputLocation})
+            ? lookupCompositeOne(spaceIndex, {"#Name" : inputLocation})
             : "";
         const placeId = inputLocation
-            ? lookupCompositeOne(spaceParentIndex, {"id" : inputLocation})
+            ? lookupCompositeOne(spaceParentIndex, {"#Name" : inputLocation})
             : "";
         
         const locationTitleKey = location_id
@@ -152,10 +152,10 @@ function fullStoryGenerate() {
         }
 
         const placeTitleKey = placeId
-            ? lookupCompositeOne(spaceTitleIndex, {"#Name" : placeId})
+            ? lookupCompositeOne(spaceTitleIndex, {"id" : placeId})
             : "";
         const placeDescriptionKey = placeId
-            ? lookupCompositeOne(spaceDescIndex, {"#Name" : placeId})
+            ? lookupCompositeOne(spaceDescIndex, {"id" : placeId})
             : "";
 
         const placeKeyList = [placeTitleKey, placeDescriptionKey];
@@ -194,7 +194,6 @@ function fullStoryGenerate() {
 
     Logger.log(JSON.stringify(payload.data, null, 2));
 
-    /*
     const options = {
         method : "post",
         contentType : "application/json",
@@ -209,5 +208,4 @@ function fullStoryGenerate() {
     } catch (e) {
         Logger.log(`Error sending : ${e.message}`);
     }
-    */
 }
