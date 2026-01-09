@@ -65,16 +65,22 @@ function fullStoryGenerate() {
       ["#Name"],
       "Name"
     );
-    const spaceTitleIndex = buildLookupCompositeOne(
+    const spaceIndex = buildLookupCompositeOne(
         refData["spaces"].data,
         refData["spaces"].header,
         ["#Name"],
+        "id"
+    );
+    const spaceTitleIndex = buildLookupCompositeOne(
+        refData["spaces"].data,
+        refData["spaces"].header,
+        ["id"],
         "title"
     );
     const spaceDescIndex = buildLookupCompositeOne(
         refData["spaces"].data,
         refData["spaces"].header,
-        ["#Name"],
+        ["id"],
         "description"
     );
     const spaceParentIndex = buildLookupCompositeOne(
@@ -123,16 +129,18 @@ function fullStoryGenerate() {
             : "";
 
         const inputLocation = rowData[inputH["location"]];
+        const location_id = inputLocation
+            ? lookupCompositeOne(spaceIndex, {"id" : inputLocation})
+            : "";
         const placeId = inputLocation
-            ? lookupCompositeOne(spaceParentIndex, {"#Name" : inputLocation})
+            ? lookupCompositeOne(spaceParentIndex, {"id" : inputLocation})
             : "";
         
-        
-        const locationTitleKey = inputLocation
-            ? lookupCompositeOne(spaceTitleIndex, {"#Name" : inputLocation})
+        const locationTitleKey = location_id
+            ? lookupCompositeOne(spaceTitleIndex, {"id" : location_id})
             : "";
-        const locationDescriptionKey = inputLocation
-            ? lookupCompositeOne(spaceDescIndex, {"#Name" : inputLocation})
+        const locationDescriptionKey = location_id
+            ? lookupCompositeOne(spaceDescIndex, {"id" : location_id})
             : "";
         const locationKeyList = [locationTitleKey, locationDescriptionKey];
         let location = "";
@@ -157,7 +165,7 @@ function fullStoryGenerate() {
                 ? lookupCompositeOne(localizationIndex, {"key" : key})
                 : "";
             
-                plcae += (text + "\n");
+            place += (text + "\n");
         }
         
         
@@ -165,7 +173,7 @@ function fullStoryGenerate() {
         dataRow[resultH["sceneId"]] = rowData[inputH["sceneId"]];
         dataRow[resultH["character"]] = character;
         dataRow[resultH["systemKind"]] = system;
-        dataRow[resultH["direction"]] = rowData[inputH["direction"]];
+        dataRow[resultH["direction"]] = rowData[inputH["DirectionWithContext"]];
         dataRow[resultH["place"]] = place;
         dataRow[resultH["location"]] = location;
         dataRow[resultH["model"]] = rowData[inputH["model"]];
