@@ -4,7 +4,7 @@ function fullStoryGenerate() {
 
     var fileId = PropertiesService.getScriptProperties().getProperty("FILE_ID");
     var masterFile = SpreadsheetApp.openById(fileId);
-    var sheetid = SpreadsheetApp.getActive().getId();
+    var sheetId = SpreadsheetApp.getActive().getId();
 
     var values = SpreadsheetApp.getActive().getSheetByName("script_info").getDataRange().getValues();
     var inputHeader = values[0];
@@ -86,6 +86,14 @@ function fullStoryGenerate() {
       ["key"],
       "ko-KR"
     );
+
+
+    const enumH = makeHeaderIndex_(refData["enum"].header);
+    const emotionList = refData["enum"].data
+        .filter((row) => String(row[enumH["Type"]]).trim() === "Emotion")
+        .map((row) => row[enumH["Name"]]);
+
+    //Logger.log(emotionList);
     
     const resultHeader = [
       "sceneId",
@@ -106,7 +114,7 @@ function fullStoryGenerate() {
         return validSceneIdSet.has(rowSceneId);
     });
 
-    Logger.log(filteredData);
+    //Logger.log(filteredData);
 
     const resultData = [];
     for( const [rowIndex, rowData] of filteredData.entries() ) {
@@ -179,14 +187,20 @@ function fullStoryGenerate() {
     
     const payload = {
         data : resultData,
+        emotions : emotionList,
         dictionary : dictionary,
         sheetName : "script_generator",
-        sheetId : sheetid,
+        sheetId : sheetId,
         promptFile : promptFile
     };
 
-    Logger.log(JSON.stringify(payload.data, null, 2));
+    const logString = JSON.stringify(payload.dictionary, null, 2);
+    SpreadsheetApp.flush();
+    SpreadsheetApp.getUi().alert(logString);
 
+    //Logger.log(JSON.stringify(payload.data, null, 2));
+
+    
     const options = {
         method : "post",
         contentType : "application/json",

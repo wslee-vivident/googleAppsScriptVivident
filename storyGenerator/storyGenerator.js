@@ -198,6 +198,7 @@ function storyGenerate() {
 
     Logger.log(JSON.stringify(payload.data, null, 2));
 
+    
     const options = {
         method : "post",
         contentType : "application/json",
@@ -212,4 +213,5 @@ function storyGenerate() {
     } catch (e) {
         Logger.log(`Error sending : ${e.message}`);
     }
+    
 }

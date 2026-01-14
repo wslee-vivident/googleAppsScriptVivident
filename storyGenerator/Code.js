@@ -1,7 +1,8 @@
 function onOpen() {
   var ui = SpreadsheetApp.getUi();
   var menu = ui.createMenu('Story');
-  menu.addItem('Generate', 'storyGenerate');
+  menu.addItem('multi-character-mode', 'storyGenerate');
+  menu.addItem('single-character-mode', 'fullStoryGenerate');
   menu.addToUi();
 }
 
