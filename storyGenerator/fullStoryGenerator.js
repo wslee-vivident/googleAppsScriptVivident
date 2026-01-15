@@ -194,10 +194,6 @@ function fullStoryGenerate() {
         promptFile : promptFile
     };
 
-    const logString = JSON.stringify(payload.dictionary, null, 2);
-    SpreadsheetApp.flush();
-    SpreadsheetApp.getUi().alert(logString);
-
     //Logger.log(JSON.stringify(payload.data, null, 2));
 
     

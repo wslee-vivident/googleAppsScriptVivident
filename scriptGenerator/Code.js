@@ -186,7 +186,6 @@ function writeSceneScript(targetSheetId, inputData, masterFile) {
     const wait = row[inputIdx.wait];
     const posReset = row[inputIdx.posReset];
     const layer = row[inputIdx.layer];
-    const bonusScore = row[inputIdx.bonusScore];
     const sheetOrder = row[inputIdx["#Order"]];
     var assetId = "";
     var assetName = "";
@@ -194,6 +193,7 @@ function writeSceneScript(targetSheetId, inputData, masterFile) {
     var translationKor = "";
     var bonusLabel = "";
     var bonusId = "";
+    let bonusScore = "";
 
     const inputType = row[inputIdx.type];
     const type = inputType
@@ -231,7 +231,13 @@ function writeSceneScript(targetSheetId, inputData, masterFile) {
     }
 
     if(type && String(type).trim() === "choice") {
-      const inputBonusId = row[inputIdx.bonusId];
+      let inputBonusId = "";
+      const bonusIdCheck = row[inputIdx.bonusId];
+      if(bonusIdCheck !== null && bonusIdCheck !== undefined && bonusIdCheck !== "") {
+        inputBonusId = bonusIdCheck;
+      } else {
+        inputBonusId = "경험치";
+      }
       bonusId = inputBonusId
         ? lookupCompositeOne(bonusIndex, {"#Name" : inputBonusId})
         : "";
@@ -240,6 +246,20 @@ function writeSceneScript(targetSheetId, inputData, masterFile) {
         lastBranchIndex,
       ].map(v => String(v ?? "").trim()).join("_");
       bonusLabel = bonusLabelKey;
+
+      switch(value) {
+        case "COOL":
+          bonusScore = 1;
+          break;
+        case "BRILLIANT":
+          bonusScore = 3;
+          break;
+        case "AWESOME" :
+          bonusScore = 5;
+          break;
+        default :
+          bonusScore = row[inputIdx.bonusScore];
+      }
     }
 
     const inputCharacterAssetKind = row[inputIdx.CharacterAssetKind];
@@ -277,7 +297,11 @@ function writeSceneScript(targetSheetId, inputData, masterFile) {
       ].map(v => String(v ?? "").trim()).join("|");
 
       assetId = characterAssetIndex.indexMap[assetLookupKey];
-      assetName = characterId;
+       if(assetKind === "PHOTO_CARD") {
+        assetName = "background";
+      } else {
+        assetName = characterId;
+      }
     } else if (inputSpaceId && String(inputSpaceId).trim() !== "") {
       const kind = "BACKGROUND";
       const space_id = inputSpaceId
@@ -366,7 +390,7 @@ function generateTextKey(targetSheet, inputData) {
     } else {
       // [케이스 2] 새로운 Key일 경우
       // 새 행 생성 (이미지 예시의 characterInfo 형식을 기본으로 사용)
-       const newRow = Array(fullData[0].length).fill("");
+      const newRow = Array(fullData[0].length).fill("");
       newRow[localizationIdx.key] = trimmedKey;
       newRow[localizationIdx.tag] = "storyscript";
       newRow[localizationIdx["#type"]] = "characterDialog";
