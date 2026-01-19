@@ -19,7 +19,7 @@
 
 const CONFIG = {
   // Production Admin server URL (no trailing slash)
-  ADMIN_URL: "https://studio.moelive.io",
+  ADMIN_URL: "https://vividentjungmin.a.pinggy.link",
 
   // Development Admin server URL (no trailing slash)
   DEV_ADMIN_URL: "https://studio-dev.moelive.io",
