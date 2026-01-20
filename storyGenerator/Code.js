@@ -4,6 +4,11 @@ function onOpen() {
   menu.addItem('multi-character-mode', 'storyGenerate');
   menu.addItem('single-character-mode', 'fullStoryGenerate');
   menu.addToUi();
+
+  var menu2 = ui.createMenu('Convert');
+  menu2.addItem('deploy -> script_generator', 'transferToScriptGenerator');
+  menu2.addItem('deploy -> dialog_generator' ,'forcePermission');
+  menu2.addToUi();
 }
 
 function forcePermission() {

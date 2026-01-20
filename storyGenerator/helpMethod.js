@@ -139,12 +139,12 @@ function lookupCompositeOne(indexBundle, conditions) {
     return indexMap[compositeKey] ?? null;
 }
 
-function mergeSheetDataToTargetSheet(targetSheet, inputData) {
+function mergeSheetDataToTargetSheet(targetSheet, inputData, startRow=3) {
   if(!inputData || inputData.length === 0) return;
   
   const fullData = targetSheet.getDataRange().getValues();
   const targetHeader = fullData[0];
-  const existingBody = fullData.slice(3);
+  const existingBody = fullData.slice(startRow);
 
 
   const sceneIdsToReplace = new Set(inputData.map(row => String(row[0]).trim()));
@@ -158,12 +158,12 @@ function mergeSheetDataToTargetSheet(targetSheet, inputData) {
 
   const lastRow = targetSheet.getMaxRows();
   const lastCol = targetSheet.getMaxColumns();
-  if(lastRow >=4 ) {
-    targetSheet.getRange(4, 1, lastRow-3, lastCol).clear();
+  if(lastRow >=1 + startRow ) {
+    targetSheet.getRange(1 + startRow, 1, lastRow-startRow, lastCol).clear();
   }
 
   if(finalTable.length > 0) {
-    const targetRange = targetSheet.getRange(4, 1, finalTable.length, finalTable[0].length);
+    const targetRange = targetSheet.getRange(1+startRow, 1, finalTable.length, finalTable[0].length);
     targetRange.setValues(finalTable);
 
     targetRange.sort([

@@ -29,6 +29,8 @@ function transferToScriptGenerator() {
 
     //GENERATOR에 보낼 배열 데이터 구성
     let outputData = [];
+    let selectionData = [];
+    let rowNum = 1;
     const columns = targetHeader.length;
 
     for(let i = 0; i < generatedScriptData.length; i++) {
@@ -44,8 +46,11 @@ function transferToScriptGenerator() {
             startRow[targetH["sceneId"]] = sceneId;
             startRow[targetH["type"]] = "배경";
             startRow[targetH["spaceName"]] = sceneMainInfo[sceneId]?.location || "";
+            startRow[targetH["shot"]] = 1;
+            startRow[targetH["FX"]] = 1;
             outputData.push(startRow);
         }
+        
 
         const currentRow = new Array(columns).fill("");
         const inputSpeaker = row[generatedScriptH["speaker"]];
@@ -54,7 +59,17 @@ function transferToScriptGenerator() {
         const inputReplyText = row[generatedScriptH["reply_text"]];
         let tag = "";
 
+        // 현재 행이 "선택지"가 아니고, 쌓여있는 "선택지 답변(selectionData)"이 있다면 지금 출력
+        if(inputSpeaker !== "선택지" && selectionData.length > 0) {
+            outputData.push(...selectionData);
+            selectionData = [];
+
+            currentRow[targetH["tag"]] = "#end";
+        }
+
         currentRow[targetH["sceneId"]] = sceneId;
+        currentRow[targetH["shot"]] = 1;
+        currentRow[targetH["FX"]] = 1;
         switch(inputSpeaker) {
             case "지문":
                 currentRow[targetH["type"]] = "지문";
@@ -66,18 +81,22 @@ function transferToScriptGenerator() {
                 currentRow[targetH["Text"]] = inputText;
                 break;
             case "선택지":
+                if(selectionData.length === 0) {
+                  const branchRow = new Array(columns).fill("");
+                  branchRow[targetH["sceneId"]] = sceneId;
+                  branchRow[targetH["type"]] = "브랜치";
+                  outputData.push(branchRow);
+                }
+
                 currentRow[targetH["type"]] = "선택지";
                 currentRow[targetH["Text"]] = inputText;
-                if(inputChoiceGrade === "COOL") {
-                    currentRow[targetH["next"]] = "#1";
-                    tag = "#1";
-                } else if(inputChoiceGrade === "BRILLIANT") {
-                    currentRow[targetH["next"]] = "#2";
-                    tag = "#2";
-                } else if(inputChoiceGrade === "AWESOME") {
-                    currentRow[targetH["next"]] = "#3";
-                    tag = "#3";
-                }
+
+                if(inputChoiceGrade === "COOL") tag = "#1";
+                else if(inputChoiceGrade === "BRILLIANT") tag = "#2";
+                else if(inputChoiceGrade === "AWESOME") tag = "#3";
+                
+                currentRow[targetH["next"]] = tag;
+
                 const choiceValues = new Array(columns).fill("");
                 choiceValues[targetH["sceneId"]] = sceneId;
                 choiceValues[targetH["value"]] = inputChoiceGrade;
@@ -85,7 +104,10 @@ function transferToScriptGenerator() {
                 choiceValues[targetH["Speaker"]] = "유저";
                 choiceValues[targetH["Text"]] = inputReplyText;
                 choiceValues[targetH["tag"]] = tag;
-                outputData.push(choiceValues);
+                choiceValues[targetH["next"]] = "#end";
+                choiceValues[targetH["FX"]] = 1;
+                choiceValues[targetH["shot"]] = 1;
+                selectionData.push(choiceValues);
                 break;
             default:
                 currentRow[targetH["type"]] = "대사";
@@ -98,15 +120,19 @@ function transferToScriptGenerator() {
         
         
         if(isEnd) {
+            if(selectionData.length > 0) {
+              outputData.push(...selectionData);
+              selectionData = [];
+            }
+
             //씬 종료 시, 종료 line 추가
             const endRow = new Array(columns).fill("");
             endRow[targetH["sceneId"]] = sceneId;
-            endRow[targetH["isEnd"]] = "TRUE";
+            endRow[targetH["type"]] = "종료";
             outputData.push(endRow);
         }
     }
 
     //타겟 시트에 데이터 쓰기
-    targetRange = targetSheet.getRange(2, 1, outputData.length, outputData[0].length);
-    targetRange.setValues(outputData);
+    mergeSheetDataToTargetSheet(targetSheet, outputData, 1);
 }

@@ -16,5 +16,10 @@
         "defaultShortcut": "Ctrl+Alt+Shift+1"
       }
     ]
-  }
+  },
+  "oauthScopes": [
+     "https://www.googleapis.com/auth/script.external_request",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/script.container.ui"
+  ]
 }
