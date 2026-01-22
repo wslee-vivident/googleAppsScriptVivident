@@ -11,7 +11,12 @@
  *
  * USAGE:
  * - Click "Sync" menu → "Push to Admin" to sync current sheet to Admin database
+ * - Click "Sync" menu → "Push Selected Rows" to push only selected rows
  * - You can also add a button and assign the syncToAdmin function
+ *
+ * MENU FUNCTIONS (add to onOpen):
+ * - pushSelectedRowsDev() - Push selected rows to Development
+ * - pushSelectedRowsProd() - Push selected rows to Production
  */
 
 // ==================== CONFIG ====================
@@ -19,13 +24,48 @@
 
 const CONFIG = {
   // Production Admin server URL (no trailing slash)
-  ADMIN_URL: "https://vividentjungmin.a.pinggy.link",
+  ADMIN_URL: "https://studio.moelive.io",
 
   // Development Admin server URL (no trailing slash)
   DEV_ADMIN_URL: "https://studio-dev.moelive.io",
 };
 
 // ==================== API KEY MANAGEMENT ====================
+
+/**
+ * Internal function to clear API key
+ * @param {"prod" | "dev"} env - Target environment
+ */
+function clearApiKey_(env) {
+  const ui = SpreadsheetApp.getUi();
+  const envLabel = env === "prod" ? "Production" : "Development";
+  const key = env === "prod" ? "EEVEE_API_KEY_PROD" : "EEVEE_API_KEY_DEV";
+
+  const response = ui.alert(
+    `Clear ${envLabel} API Key`,
+    `Are you sure you want to remove the ${envLabel} API key?`,
+    ui.ButtonSet.YES_NO
+  );
+
+  if (response === ui.Button.YES) {
+    PropertiesService.getUserProperties().deleteProperty(key);
+    SpreadsheetApp.getActiveSpreadsheet().toast(`${envLabel} API key cleared.`, "Success", 3);
+  }
+}
+
+/**
+ * Clears Development API key
+ */
+function clearApiKeyDev() {
+  clearApiKey_("dev");
+}
+
+/**
+ * Clears Production API key
+ */
+function clearApiKeyProd() {
+  clearApiKey_("prod");
+}
 
 /**
  * Gets the stored API key for specified environment
@@ -35,30 +75,6 @@ const CONFIG = {
 function getApiKey(env) {
   const key = env === "prod" ? "EEVEE_API_KEY_PROD" : "EEVEE_API_KEY_DEV";
   return PropertiesService.getUserProperties().getProperty(key);
-}
-
-/**
- * Saves the API key for specified environment
- * @param {"prod" | "dev"} env - Target environment
- * @param {string} apiKey - The API key to save
- */
-function setApiKey(env, apiKey) {
-  const key = env === "prod" ? "EEVEE_API_KEY_PROD" : "EEVEE_API_KEY_DEV";
-  PropertiesService.getUserProperties().setProperty(key, apiKey);
-}
-
-/**
- * Prompts user to enter Production API key
- */
-function promptSetApiKeyProd() {
-  promptSetApiKey_("prod");
-}
-
-/**
- * Prompts user to enter Development API key
- */
-function promptSetApiKeyDev() {
-  promptSetApiKey_("dev");
 }
 
 /**
@@ -80,7 +96,7 @@ function promptSetApiKey_(env) {
     const newKey = response.getResponseText().trim();
     if (newKey) {
       setApiKey(env, newKey);
-      SpreadsheetApp.getActiveSpreadsheet().toast(`${envLabel} API key saved successfully!`, "✅ Success", 3);
+      SpreadsheetApp.getActiveSpreadsheet().toast(`${envLabel} API key saved successfully!`, "Success", 3);
     } else {
       ui.alert("Error", "API key cannot be empty.", ui.ButtonSet.OK);
     }
@@ -88,43 +104,260 @@ function promptSetApiKey_(env) {
 }
 
 /**
- * Clears Production API key
+ * Prompts user to enter Development API key
  */
-function clearApiKeyProd() {
-  clearApiKey_("prod");
+function promptSetApiKeyDev() {
+  promptSetApiKey_("dev");
 }
 
 /**
- * Clears Development API key
+ * Prompts user to enter Production API key
  */
-function clearApiKeyDev() {
-  clearApiKey_("dev");
+function promptSetApiKeyProd() {
+  promptSetApiKey_("prod");
 }
 
 /**
- * Internal function to clear API key
+ * Saves the API key for specified environment
  * @param {"prod" | "dev"} env - Target environment
+ * @param {string} apiKey - The API key to save
  */
-function clearApiKey_(env) {
-  const ui = SpreadsheetApp.getUi();
-  const envLabel = env === "prod" ? "Production" : "Development";
+function setApiKey(env, apiKey) {
   const key = env === "prod" ? "EEVEE_API_KEY_PROD" : "EEVEE_API_KEY_DEV";
-
-  const response = ui.alert(
-    `Clear ${envLabel} API Key`,
-    `Are you sure you want to remove the ${envLabel} API key?`,
-    ui.ButtonSet.YES_NO
-  );
-
-  if (response === ui.Button.YES) {
-    PropertiesService.getUserProperties().deleteProperty(key);
-    SpreadsheetApp.getActiveSpreadsheet().toast(`${envLabel} API key cleared.`, "✅ Success", 3);
-  }
+  PropertiesService.getUserProperties().setProperty(key, apiKey);
 }
 
 // Sheet ID for the mapping configuration sheet
 // This sheet should have columns: sheetName, tableName, exact, filters
 const MAPPING_SHEET_ID = 1436172190;
+
+/**
+ * Calls the Admin batch push webhook endpoint (Sheet -> DB)
+ * Uses the new batch processing approach where the server reads
+ * directly from Google Sheets in chunks of 100 rows.
+ *
+ * @param {Object} params - Webhook parameters
+ * @param {string} params.tableName - Target table name in database
+ * @param {string} params.sheetName - Source sheet name in spreadsheet
+ * @param {string} [params.spreadsheetId] - Google Spreadsheet ID (optional, server uses master if not provided)
+ * @param {"prod" | "dev"} [params.env="prod"] - Target environment
+ * @param {boolean} [params.exact] - If true, delete DB records not in sheet
+ * @param {Object} [params.filters] - Optional filters to scope the sync
+ * @returns {Object} Response with batch progress and summary
+ */
+function callBatchWebhook(params) {
+  const { tableName, sheetName, spreadsheetId, env = "prod", exact, filters } = params;
+
+  const envLabel = env === "prod" ? "Production" : "Development";
+  const apiKey = getApiKey(env);
+  if (!apiKey) {
+    throw new Error(`${envLabel} API key not set. Please set it via Sync → ${envLabel} → Set API Key`);
+  }
+
+  const baseUrl = env === "prod" ? CONFIG.ADMIN_URL : CONFIG.DEV_ADMIN_URL;
+  const url = `${baseUrl}/api/sync/google-sheets/webhook/push-batch`;
+
+  // Build payload - no CSV data needed, server reads directly from sheet
+  const payload = {
+    tableName,
+    sheetName,
+    apiKey,
+  };
+
+  // Add optional spreadsheetId if provided (server uses master spreadsheet if not)
+  if (spreadsheetId) {
+    payload.spreadsheetId = spreadsheetId;
+  }
+
+  // Add optional exact and filters if provided
+  if (exact !== undefined) {
+    payload.exact = exact;
+  }
+  if (filters !== undefined) {
+    payload.filters = filters;
+  }
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  };
+
+  const response = UrlFetchApp.fetch(url, options);
+  const responseCode = response.getResponseCode();
+  const responseText = response.getContentText();
+
+  let responseData;
+  try {
+    responseData = JSON.parse(responseText);
+  } catch (e) {
+    responseData = { error: responseText };
+  }
+
+  if (responseCode !== 200) {
+    // Throw error with full response data for detailed error display
+    const error = new Error(responseData.error || `HTTP ${responseCode}`);
+    error.responseData = responseData;
+    error.statusCode = responseCode;
+    throw error;
+  }
+
+  return responseData;
+}
+
+// ==================== MAIN FUNCTIONS ====================
+
+/**
+ * Calls the Admin batch pull webhook endpoint (DB -> Sheet)
+ */
+function callPullWebhook(params) {
+  const { tableName, sheetName, spreadsheetId, env = "prod", exact, filters } = params;
+
+  const envLabel = env === "prod" ? "Production" : "Development";
+  const apiKey = getApiKey(env);
+  if (!apiKey) {
+    throw new Error(`${envLabel} API key not set. Please set it via Sync → ${envLabel} → Set API Key`);
+  }
+
+  const baseUrl = env === "prod" ? CONFIG.ADMIN_URL : CONFIG.DEV_ADMIN_URL;
+  const url = `${baseUrl}/api/sync/google-sheets/webhook/pull-batch`;
+
+  const payload = {
+    tableName,
+    sheetName,
+    spreadsheetId,
+    apiKey,
+  };
+
+  if (exact !== undefined) {
+    payload.exact = exact;
+  }
+  if (filters !== undefined) {
+    payload.filters = filters;
+  }
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  };
+
+  const response = UrlFetchApp.fetch(url, options);
+  const responseCode = response.getResponseCode();
+  const responseText = response.getContentText();
+
+  let responseData;
+  try {
+    responseData = JSON.parse(responseText);
+  } catch (e) {
+    responseData = { error: responseText };
+  }
+
+  if (responseCode !== 200) {
+    const error = new Error(responseData.error || `HTTP ${responseCode}`);
+    error.responseData = responseData;
+    error.statusCode = responseCode;
+    throw error;
+  }
+
+  return responseData;
+}
+
+/**
+ * Legacy callWebhook function - kept for backward compatibility
+ * @deprecated Use callBatchWebhook instead for better performance with large datasets
+ */
+function callWebhook(params) {
+  const { tableName, csvData, env = "prod", exact, filters } = params;
+
+  const envLabel = env === "prod" ? "Production" : "Development";
+  const apiKey = getApiKey(env);
+  if (!apiKey) {
+    throw new Error(`${envLabel} API key not set. Please set it via Sync → ${envLabel} → Set API Key`);
+  }
+
+  const baseUrl = env === "prod" ? CONFIG.ADMIN_URL : CONFIG.DEV_ADMIN_URL;
+  const url = `${baseUrl}/api/sync/google-sheets/webhook/push`;
+
+  // API key is sent in the body, not in headers
+  const payload = {
+    tableName,
+    csvData,
+    apiKey,
+  };
+
+  // Add optional exact and filters if provided
+  if (exact !== undefined) {
+    payload.exact = exact;
+  }
+  if (filters !== undefined) {
+    payload.filters = filters;
+  }
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true,
+  };
+
+  const response = UrlFetchApp.fetch(url, options);
+  const responseCode = response.getResponseCode();
+  const responseText = response.getContentText();
+
+  let responseData;
+  try {
+    responseData = JSON.parse(responseText);
+  } catch (e) {
+    responseData = { error: responseText };
+  }
+
+  if (responseCode !== 200) {
+    // Throw error with full response data for detailed error display
+    const error = new Error(responseData.error || `HTTP ${responseCode}`);
+    error.responseData = responseData;
+    error.statusCode = responseCode;
+    throw error;
+  }
+
+  return responseData;
+}
+
+/**
+ * Exact pull from Production Admin (DB -> Sheet) for the currently active sheet.
+ * Overwrites data rows (below header/desc/type) to match DB.
+ */
+function exactPullFromAdmin() {
+  pullSheet_("prod", { exact: true });
+}
+
+/**
+ * Exact pull from Development Admin (DB -> Sheet) for the currently active sheet.
+ * Overwrites data rows (below header/desc/type) to match DB.
+ */
+function exactPullFromDevAdmin() {
+  pullSheet_("dev", { exact: true });
+}
+
+/**
+ * Extracts unique row indices from a selected range
+ * Handles both single selection and multi-selection
+ * @param {GoogleAppsScript.Spreadsheet.Range} range - The selected range
+ * @returns {number[]} Array of unique 1-based row indices
+ */
+function getSelectedRowIndices(range) {
+  const startRow = range.getRow();
+  const numRows = range.getNumRows();
+  const indices = [];
+
+  for (let i = 0; i < numRows; i++) {
+    indices.push(startRow + i);
+  }
+
+  return indices;
+}
 
 /**
  * Reads the mapping configuration from the dedicated mapping sheet
@@ -197,22 +430,6 @@ function getSheetTableMap() {
   return map;
 }
 
-// ==================== MAIN FUNCTIONS ====================
-
-/**
- * Syncs the currently active sheet to Production Admin
- */
-function syncToAdmin() {
-  syncSheet_("prod");
-}
-
-/**
- * Syncs the currently active sheet to Development Admin
- */
-function syncToDevAdmin() {
-  syncSheet_("dev");
-}
-
 /**
  * Pulls data from Production Admin (DB -> Sheet) for the currently active sheet.
  */
@@ -225,74 +442,6 @@ function pullFromAdmin() {
  */
 function pullFromDevAdmin() {
   pullSheet_("dev", { exact: undefined });
-}
-
-/**
- * Exact pull from Production Admin (DB -> Sheet) for the currently active sheet.
- * Overwrites data rows (below header/desc/type) to match DB.
- */
-function exactPullFromAdmin() {
-  pullSheet_("prod", { exact: true });
-}
-
-/**
- * Exact pull from Development Admin (DB -> Sheet) for the currently active sheet.
- * Overwrites data rows (below header/desc/type) to match DB.
- */
-function exactPullFromDevAdmin() {
-  pullSheet_("dev", { exact: true });
-}
-
-/**
- * Internal function to sync sheet to specified environment
- * @param {"prod" | "dev"} env - Target environment
- */
-function syncSheet_(env) {
-  const ui = SpreadsheetApp.getUi();
-  const sheet = SpreadsheetApp.getActiveSheet();
-  const sheetName = sheet.getName();
-
-  // Get mapping configuration
-  const sheetTableMap = getSheetTableMap();
-  const config = sheetTableMap[sheetName] || {};
-
-  // Get table name from mapping or convert sheet name to kebab-case
-  const tableName = config.tableName || toKebabCase(sheetName);
-  const envLabel = env === "prod" ? "Production" : "Development";
-
-  // Production sync requires additional confirmation
-  if (env === "prod") {
-    const confirmation = ui.alert(
-      "⚠️ Production Sync Confirmation",
-      `You are about to sync "${sheetName}" to PRODUCTION database.\n\nTable: ${tableName}\nThis will modify live data.\n\nAre you sure you want to continue?`,
-      ui.ButtonSet.YES_NO
-    );
-
-    if (confirmation !== ui.Button.YES) {
-      SpreadsheetApp.getActiveSpreadsheet().toast("Production sync cancelled.", "Cancelled", 3);
-      return;
-    }
-  }
-
-  try {
-    // Convert sheet to CSV
-    const csvData = sheetToCsv(sheet);
-
-    // Call webhook with optional exact and filters
-    const result = callWebhook({
-      tableName,
-      csvData,
-      env,
-      exact: config.exact,
-      filters: config.filters,
-    });
-
-    // Show result
-    showSyncResult(result, sheetName, tableName, envLabel);
-  } catch (error) {
-    showSyncError(error, sheetName, tableName, envLabel);
-    console.error("Sync error:", error);
-  }
 }
 
 /**
@@ -320,7 +469,7 @@ function pullSheet_(env, options) {
   // Production pull requires confirmation
   if (env === "prod") {
     const confirmation = ui.alert(
-      "⚠️ Production Pull Confirmation",
+      "Production Pull Confirmation",
       `You are about to PULL "${sheetName}" from PRODUCTION database.\n\nTable: ${tableName}\nExact: ${exact ? "true" : "false"}\n\nThis will overwrite sheet data rows (below header/desc/type) depending on exact.\n\nContinue?`,
       ui.ButtonSet.YES_NO
     );
@@ -331,7 +480,7 @@ function pullSheet_(env, options) {
   }
 
   try {
-    spreadsheet.toast(`Pulling from ${envLabel}...`, "⏳ Pull", 5);
+    spreadsheet.toast(`Pulling from ${envLabel}...`, "Pull", 5);
 
     const result = callPullWebhook({
       tableName,
@@ -350,203 +499,180 @@ function pullSheet_(env, options) {
 }
 
 /**
- * Syncs all sheets to Production Admin
- */
-function syncAllSheetsToAdmin() {
-  syncAllSheets_("prod");
-}
-
-/**
- * Syncs all sheets to Development Admin
- */
-function syncAllSheetsToDevAdmin() {
-  syncAllSheets_("dev");
-}
-
-/**
- * Internal function to sync all sheets to specified environment
+ * Internal function to push only selected rows to Admin
+ * Uses the legacy push API with CSV data (not batch)
  * @param {"prod" | "dev"} env - Target environment
  */
-function syncAllSheets_(env) {
+function pushSelectedRows_(env) {
   const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActiveSheet();
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = sheet.getName();
+
+  // Get selected range
+  const selection = sheet.getSelection();
+  const rangeList = selection.getActiveRangeList();
+
+  if (!rangeList) {
+    ui.alert("No Selection", "Please select some rows first.", ui.ButtonSet.OK);
+    return;
+  }
+
+  // Get unique row indices from all ranges
+  const selectedRowIndices = [];
+  const ranges = rangeList.getRanges();
+  for (const range of ranges) {
+    selectedRowIndices.push(...getSelectedRowIndices(range));
+  }
+  // Remove duplicates
+  const uniqueSelectedRowIndices = [...new Set(selectedRowIndices)];
+  const dataRowCount = selectedRowIndices.filter((r) => r > 3).length;
+
+  if (dataRowCount === 0) {
+    ui.alert(
+      "No Data Rows",
+      "Please select data rows (row 4 or below).\n\nRows 1-3 are headers and are always included automatically.",
+      ui.ButtonSet.OK
+    );
+    return;
+  }
+
+  // Get mapping configuration
+  const sheetTableMap = getSheetTableMap();
+  const config = sheetTableMap[sheetName] || {};
+  const tableName = config.tableName || toKebabCase(sheetName);
   const envLabel = env === "prod" ? "Production" : "Development";
 
   // Production requires extra confirmation
   if (env === "prod") {
-    const firstConfirm = ui.alert(
-      "⚠️ Production Sync - All Sheets",
-      `You are about to sync ALL sheets to PRODUCTION database.\n\nThis will modify live data for multiple tables.\n\nAre you sure?`,
+    const confirmation = ui.alert(
+      "Production Push Confirmation",
+      `You are about to push ${dataRowCount} selected row(s) to PRODUCTION.\n\nSheet: ${sheetName}\nTable: ${tableName}\n\nThis will modify live data. Continue?`,
       ui.ButtonSet.YES_NO
     );
 
-    if (firstConfirm !== ui.Button.YES) {
-      spreadsheet.toast("Production sync cancelled.", "Cancelled", 3);
-      return;
-    }
-
-    // Second confirmation for production
-    const secondConfirm = ui.alert(
-      "🚨 Final Confirmation",
-      `FINAL WARNING: This action will sync all sheets to PRODUCTION.\n\nType 'YES' mentally and click OK to proceed.`,
-      ui.ButtonSet.OK_CANCEL
-    );
-
-    if (secondConfirm !== ui.Button.OK) {
-      spreadsheet.toast("Production sync cancelled.", "Cancelled", 3);
+    if (confirmation !== ui.Button.YES) {
+      spreadsheet.toast("Production push cancelled.", "Cancelled", 3);
       return;
     }
   } else {
-    const response = ui.alert(
-      `Sync All Sheets to ${envLabel}`,
-      `This will sync ALL sheets to ${envLabel} Admin. Continue?`,
+    // Development confirmation
+    const confirmation = ui.alert(
+      "Push Selected Rows",
+      `Push ${dataRowCount} selected row(s) to ${envLabel}?\n\nSheet: ${sheetName}\nTable: ${tableName}`,
       ui.ButtonSet.YES_NO
     );
 
-    if (response !== ui.Button.YES) {
+    if (confirmation !== ui.Button.YES) {
       return;
     }
   }
-
-  const sheets = spreadsheet.getSheets();
-  const results = [];
-
-  // Get mapping configuration once
-  const sheetTableMap = getSheetTableMap();
-
-  for (const sheet of sheets) {
-    const sheetName = sheet.getName();
-
-    // Skip hidden sheets, sheets starting with _, and the mapping sheet itself
-    if (sheet.isSheetHidden() || sheetName.startsWith("#") || sheet.getSheetId() === MAPPING_SHEET_ID) {
-      continue;
-    }
-
-    const config = sheetTableMap[sheetName] || {};
-    const tableName = config.tableName || toKebabCase(sheetName);
-
-    try {
-      const csvData = sheetToCsv(sheet);
-      const result = callWebhook({
-        tableName,
-        csvData,
-        env,
-        exact: config.exact,
-        filters: config.filters,
-      });
-      results.push({
-        sheet: sheetName,
-        table: tableName,
-        success: true,
-        summary: result.summary,
-      });
-    } catch (error) {
-      results.push({
-        sheet: sheetName,
-        table: tableName,
-        success: false,
-        error: error.message,
-      });
-    }
-  }
-
-  // Show summary
-  const successCount = results.filter((r) => r.success).length;
-  const failCount = results.filter((r) => !r.success).length;
-
-  if (failCount > 0) {
-    // Show alert for failures
-    let message = `[${envLabel}] Synced ${successCount} sheets successfully.\n`;
-    message += `${failCount} sheets failed.\n\n`;
-    message += "Failed sheets:\n";
-    results
-      .filter((r) => !r.success)
-      .forEach((r) => {
-        message += `- ${r.sheet}: ${r.error}\n`;
-      });
-    ui.alert("Sync Complete with Errors", message, ui.ButtonSet.OK);
-  } else {
-    // Show toast for success
-    spreadsheet.toast(`Successfully synced ${successCount} sheets.`, `✅ ${envLabel} Sync Complete`, 5);
-  }
-}
-
-/**
- * Tests the connection to Production Admin server
- */
-function testConnectionProd() {
-  testConnection_("prod");
-}
-
-/**
- * Tests the connection to Development Admin server
- */
-function testConnectionDev() {
-  testConnection_("dev");
-}
-
-/**
- * Internal function to test connection to specified environment
- * @param {"prod" | "dev"} env - Target environment
- */
-function testConnection_(env) {
-  const ui = SpreadsheetApp.getUi();
-  const baseUrl = env === "prod" ? CONFIG.ADMIN_URL : CONFIG.DEV_ADMIN_URL;
-  const envLabel = env === "prod" ? "Production" : "Development";
 
   try {
-    // Simple test - try to access the API
-    const response = UrlFetchApp.fetch(`${baseUrl}/api/health`, {
-      method: "get",
-      muteHttpExceptions: true,
+    spreadsheet.toast(`Pushing ${dataRowCount} rows to ${envLabel}...`, "Push Selected", 5);
+
+    // Generate CSV from selected rows
+    const csvData = selectedRowsToCsv(sheet, selectedRowIndices);
+
+    // Call webhook with exact=false (only upsert selected, don't delete others)
+    const result = callWebhook({
+      tableName,
+      csvData,
+      env,
+      exact: false,
+      filters: config.filters,
     });
 
-    const status = response.getResponseCode();
-
-    if (status === 200 || status === 404) {
-      ui.alert(
-        `${envLabel} Connection Test`,
-        `✅ Connection successful!\n\nServer: ${baseUrl}\nStatus: ${status}`,
-        ui.ButtonSet.OK
-      );
-    } else {
-      ui.alert(
-        `${envLabel} Connection Test`,
-        `⚠️ Server responded with status ${status}\n\nServer: ${baseUrl}`,
-        ui.ButtonSet.OK
-      );
-    }
+    // Show result
+    showSyncResult(result, sheetName, tableName, envLabel);
   } catch (error) {
-    ui.alert(
-      `${envLabel} Connection Test`,
-      `❌ Connection failed!\n\nServer: ${baseUrl}\nError: ${error.message}`,
-      ui.ButtonSet.OK
-    );
+    showSyncError(error, sheetName, tableName, envLabel);
+    console.error("Push selected rows error:", error);
   }
 }
 
-// ==================== HELPER FUNCTIONS ====================
+/**
+ * Pushes selected rows to Development Admin
+ */
+function pushSelectedRowsDev() {
+  pushSelectedRows_("dev");
+}
 
 /**
- * Converts camelCase or PascalCase to kebab-case
- * Also handles spaces and existing hyphens
- * Examples:
- *   "labAssets" -> "lab-assets"
- *   "globalConfig" -> "global-config"
- *   "MySheetName" -> "my-sheet-name"
- *   "already-kebab" -> "already-kebab"
+ * Pushes selected rows to Production Admin
  */
-function toKebabCase(str) {
-  return str
-    .replace(/([a-z])([A-Z])/g, "$1-$2") // Insert hyphen between camelCase
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2") // Handle consecutive caps like "XMLParser" -> "xml-parser"
-    .replace(/\s+/g, "-") // Replace spaces with hyphens
-    .toLowerCase();
+function pushSelectedRowsProd() {
+  pushSelectedRows_("prod");
+}
+
+/**
+ * Converts a single row array to a CSV line string
+ * Handles commas, quotes, newlines, dates, and booleans
+ * @param {Array} row - Array of cell values
+ * @returns {string} CSV line string
+ */
+function rowToCsvLine(row) {
+  return row
+    .map((cell) => {
+      // Convert cell to string
+      let value = cell === null || cell === undefined ? "" : String(cell);
+
+      // Handle dates
+      if (cell instanceof Date) {
+        value = cell.toISOString();
+      }
+
+      // Handle booleans
+      if (typeof cell === "boolean") {
+        value = cell ? "true" : "false";
+      }
+
+      // Escape quotes and wrap in quotes if contains special chars
+      if (value.includes(",") || value.includes('"') || value.includes("\n") || value.includes("\r")) {
+        value = '"' + value.replace(/"/g, '""') + '"';
+      }
+
+      return value;
+    })
+    .join(",");
+}
+
+/**
+ * Converts selected rows from a sheet to CSV format
+ * Always includes the first 3 header rows + selected data rows
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet - The sheet
+ * @param {number[]} selectedRowIndices - 1-based row indices of selected rows
+ * @returns {string} CSV string
+ */
+function selectedRowsToCsv(sheet, selectedRowIndices) {
+  const allData = sheet.getDataRange().getValues();
+  const rows = [];
+
+  // Always include first 3 rows (header, description, type)
+  for (let i = 0; i < 3; i++) {
+    if (allData[i]) {
+      rows.push(rowToCsvLine(allData[i]));
+    }
+  }
+
+  // Add selected data rows (indices are 1-based, allData is 0-based)
+  // Sort indices to maintain row order
+  const sortedIndices = [...selectedRowIndices].sort((a, b) => a - b);
+
+  for (const rowIndex of sortedIndices) {
+    // Skip header rows (1, 2, 3) - only include data rows (4+)
+    if (rowIndex > 3 && allData[rowIndex - 1]) {
+      rows.push(rowToCsvLine(allData[rowIndex - 1]));
+    }
+  }
+
+  return rows.join("\n");
 }
 
 /**
  * Converts a sheet to CSV format
  * Handles commas, quotes, and newlines in cell values
+ * @deprecated No longer used for push operations - server reads sheet directly
  */
 function sheetToCsv(sheet) {
   const data = sheet.getDataRange().getValues();
@@ -582,129 +708,79 @@ function sheetToCsv(sheet) {
 }
 
 /**
- * Calls the Admin webhook endpoint
+ * Shows the batch sync result as a toast notification or dialog
+ * Handles the new batch response format with processedBatches and totalBatches
+ * @param {Object} result - Batch sync result from webhook
+ * @param {string} sheetName - Name of the synced sheet
+ * @param {string} tableName - Name of the target table
+ * @param {string} envLabel - Environment label (Production/Development)
  */
-function callWebhook(params) {
-  const { tableName, csvData, env = "prod", exact, filters } = params;
+function showBatchSyncResult(result, sheetName, tableName, envLabel) {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
 
-  const envLabel = env === "prod" ? "Production" : "Development";
-  const apiKey = getApiKey(env);
-  if (!apiKey) {
-    throw new Error(`${envLabel} API key not set. Please set it via Sync → ${envLabel} → Set API Key`);
+  if (result.success) {
+    const summary = result.summary || {};
+    const hasErrors = (result.errors && result.errors.length > 0) || summary.errors > 0;
+
+    // If there are errors, show detailed dialog
+    if (hasErrors) {
+      const lines = [
+        `Sync completed with warnings`,
+        ``,
+        `Environment: ${envLabel}`,
+        `Sheet: ${sheetName}`,
+        `Table: ${tableName}`,
+        ``,
+        `Progress: ${result.processedBatches}/${result.totalBatches} batches`,
+        ``,
+        `Summary:`,
+        `  - Total: ${summary.total || 0}`,
+        `  - Created: ${summary.created || 0}`,
+        `  - Updated: ${summary.updated || 0}`,
+        `  - Skipped: ${summary.skipped || 0}`,
+        `  - Errors: ${summary.errors || 0}`,
+      ];
+
+      // Add deleted count if any
+      if (summary.deleted > 0) {
+        lines.push(`  - Deleted: ${summary.deleted}`);
+      }
+
+      // Add validation/row errors
+      if (result.errors && result.errors.length > 0) {
+        lines.push(``, `Row Errors (${result.errors.length}):`);
+        result.errors.slice(0, 5).forEach((err) => {
+          const rowNum = err.rowNumber || "?";
+          lines.push(`  - Row ${rowNum}: ${err.error}`);
+        });
+        if (result.errors.length > 5) {
+          lines.push(`  ... and ${result.errors.length - 5} more errors`);
+        }
+      }
+
+      ui.alert(`${envLabel} Batch Sync Result`, lines.join("\n"), ui.ButtonSet.OK);
+    } else {
+      // Success without errors - show toast with batch progress
+      const deleted = summary.deleted > 0 ? `, Deleted: ${summary.deleted}` : "";
+      const toastMessage = `Batches: ${result.processedBatches}/${result.totalBatches} | Created: ${summary.created || 0}, Updated: ${summary.updated || 0}, Skipped: ${summary.skipped || 0}${deleted}`;
+      spreadsheet.toast(toastMessage, `${envLabel} Sync: ${sheetName}`, 6);
+    }
+  } else {
+    ui.alert("Sync Error", `Failed to sync: ${result.error || "Unknown error"}`, ui.ButtonSet.OK);
   }
-
-  const baseUrl = env === "prod" ? CONFIG.ADMIN_URL : CONFIG.DEV_ADMIN_URL;
-  const url = `${baseUrl}/api/sync/google-sheets/webhook/push`;
-
-  // API key is sent in the body, not in headers
-  const payload = {
-    tableName,
-    csvData,
-    apiKey,
-  };
-
-  // Add optional exact and filters if provided
-  if (exact !== undefined) {
-    payload.exact = exact;
-  }
-  if (filters !== undefined) {
-    payload.filters = filters;
-  }
-
-  const options = {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
-  };
-
-  const response = UrlFetchApp.fetch(url, options);
-  const responseCode = response.getResponseCode();
-  const responseText = response.getContentText();
-
-  let responseData;
-  try {
-    responseData = JSON.parse(responseText);
-  } catch (e) {
-    responseData = { error: responseText };
-  }
-
-  if (responseCode !== 200) {
-    // Throw error with full response data for detailed error display
-    const error = new Error(responseData.error || `HTTP ${responseCode}`);
-    error.responseData = responseData;
-    error.statusCode = responseCode;
-    throw error;
-  }
-
-  return responseData;
 }
 
-/**
- * Calls the Admin pull webhook endpoint (DB -> Sheet)
- */
-function callPullWebhook(params) {
-  const { tableName, sheetName, spreadsheetId, env = "prod", exact, filters } = params;
-
-  const envLabel = env === "prod" ? "Production" : "Development";
-  const apiKey = getApiKey(env);
-  if (!apiKey) {
-    throw new Error(`${envLabel} API key not set. Please set it via Sync → ${envLabel} → Set API Key`);
-  }
-
-  const baseUrl = env === "prod" ? CONFIG.ADMIN_URL : CONFIG.DEV_ADMIN_URL;
-  const url = `${baseUrl}/api/sync/google-sheets/webhook/pull`;
-
-  const payload = {
-    tableName,
-    sheetName,
-    spreadsheetId,
-    apiKey,
-  };
-
-  if (exact !== undefined) {
-    payload.exact = exact;
-  }
-  if (filters !== undefined) {
-    payload.filters = filters;
-  }
-
-  const options = {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
-  };
-
-  const response = UrlFetchApp.fetch(url, options);
-  const responseCode = response.getResponseCode();
-  const responseText = response.getContentText();
-
-  let responseData;
-  try {
-    responseData = JSON.parse(responseText);
-  } catch (e) {
-    responseData = { error: responseText };
-  }
-
-  if (responseCode !== 200) {
-    const error = new Error(responseData.error || `HTTP ${responseCode}`);
-    error.responseData = responseData;
-    error.statusCode = responseCode;
-    throw error;
-  }
-
-  return responseData;
-}
+// ==================== PUSH SELECTED ROWS ====================
 
 /**
  * Shows the pull result as a toast notification
  * @param {Object} result - Result from pull webhook
  * @param {string} sheetName - Name of the target sheet
- * @param {string} tableName - Name of the source table
+ * @param {string} _tableName - Name of the source table (unused but kept for API consistency)
  * @param {string} envLabel - Environment label
  */
-function showPullResult(result, sheetName, tableName, envLabel) {
+function showPullResult(result, sheetName, _tableName, envLabel) {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
 
@@ -713,13 +789,21 @@ function showPullResult(result, sheetName, tableName, envLabel) {
     return;
   }
 
+  const summary = result.summary || {};
   const details = result.details || {};
-  const updated = details.rowsUpdated !== undefined ? details.rowsUpdated : "?";
-  const inserted = details.rowsInserted !== undefined ? details.rowsInserted : "?";
-  const fetched = details.rowsFetched !== undefined ? details.rowsFetched : "?";
-  const toastMessage = `Fetched: ${fetched}, Updated: ${updated}, Inserted: ${inserted}`;
+  const updated =
+    summary.updated !== undefined ? summary.updated : details.rowsUpdated !== undefined ? details.rowsUpdated : "?";
+  const inserted =
+    summary.inserted !== undefined ? summary.inserted : details.rowsInserted !== undefined ? details.rowsInserted : "?";
+  const fetched =
+    summary.fetched !== undefined ? summary.fetched : details.rowsFetched !== undefined ? details.rowsFetched : "?";
+  const batchInfo =
+    result.processedBatches !== undefined && result.totalBatches !== undefined
+      ? `Batches: ${result.processedBatches}/${result.totalBatches} | `
+      : "";
+  const toastMessage = `${batchInfo}Fetched: ${fetched}, Updated: ${updated}, Inserted: ${inserted}`;
 
-  spreadsheet.toast(toastMessage, `✅ ${envLabel} Pull: ${sheetName}`, 6);
+  spreadsheet.toast(toastMessage, `${envLabel} Pull: ${sheetName}`, 6);
 }
 
 /**
@@ -735,7 +819,7 @@ function showSyncError(error, sheetName, tableName, envLabel) {
   const statusCode = error.statusCode || "Unknown";
 
   const lines = [
-    `❌ Sync Failed`,
+    `Sync Failed`,
     ``,
     `Environment: ${envLabel}`,
     `Sheet: ${sheetName}`,
@@ -747,7 +831,7 @@ function showSyncError(error, sheetName, tableName, envLabel) {
 
   // Add hint if available (e.g., for table not found)
   if (responseData.hint) {
-    lines.push(``, `💡 Hint: ${responseData.hint}`);
+    lines.push(``, `Hint: ${responseData.hint}`);
   }
 
   // Add details if available (e.g., validation errors, bulk operation errors)
@@ -755,7 +839,7 @@ function showSyncError(error, sheetName, tableName, envLabel) {
     lines.push(``, `Details:`);
     if (Array.isArray(responseData.details)) {
       responseData.details.slice(0, 5).forEach((detail) => {
-        lines.push(`  • ${detail}`);
+        lines.push(`  - ${detail}`);
       });
       if (responseData.details.length > 5) {
         lines.push(`  ... and ${responseData.details.length - 5} more`);
@@ -790,6 +874,7 @@ function showSyncError(error, sheetName, tableName, envLabel) {
 /**
  * Shows the sync result as a toast notification
  * For results with warnings/errors, shows a dialog instead
+ * @deprecated Use showBatchSyncResult for new batch push operations
  * @param {Object} result - Sync result from webhook
  * @param {string} sheetName - Name of the synced sheet
  * @param {string} tableName - Name of the target table
@@ -806,33 +891,33 @@ function showSyncResult(result, sheetName, tableName, envLabel) {
     // If there are warnings or errors, show detailed dialog
     if (hasWarnings) {
       const lines = [
-        `✅ Sync completed with warnings`,
+        `Sync completed with warnings`,
         ``,
         `Environment: ${envLabel}`,
         `Sheet: ${sheetName}`,
         `Table: ${tableName}`,
         ``,
         `Summary:`,
-        `  • Total: ${summary.total}`,
-        `  • Created: ${summary.created}`,
-        `  • Updated: ${summary.updated}`,
-        `  • Skipped: ${summary.skipped}`,
-        `  • Errors: ${summary.errors}`,
+        `  - Total: ${summary.total}`,
+        `  - Created: ${summary.created}`,
+        `  - Updated: ${summary.updated}`,
+        `  - Skipped: ${summary.skipped}`,
+        `  - Errors: ${summary.errors}`,
       ];
 
       // Add deleted count if exact mode was used
       if (result.deletedCount !== undefined) {
-        lines.push(`  • Deleted: ${result.deletedCount}`);
+        lines.push(`  - Deleted: ${result.deletedCount}`);
       }
 
       // Add bulk operation errors (DB errors during create/update/delete)
       if (result.errors && result.errors.length > 0) {
-        lines.push(``, `❌ Operation Errors (${result.errors.length}):`);
+        lines.push(``, `Operation Errors (${result.errors.length}):`);
         result.errors.slice(0, 5).forEach((err) => {
           const op = err.operation || {};
           const opType = op.type || "unknown";
           const opId = op.id || op.compositeId ? JSON.stringify(op.compositeId) : "?";
-          lines.push(`  • [${opType}] id=${opId}: ${err.error}`);
+          lines.push(`  - [${opType}] id=${opId}: ${err.error}`);
         });
         if (result.errors.length > 5) {
           lines.push(`  ... and ${result.errors.length - 5} more errors`);
@@ -841,7 +926,7 @@ function showSyncResult(result, sheetName, tableName, envLabel) {
 
       // Add warning for invalid rows (CSV parse errors)
       if (result.invalidRowsCount > 0) {
-        lines.push(``, `⚠️ Invalid Rows (${result.invalidRowsCount} skipped):`);
+        lines.push(``, `Invalid Rows (${result.invalidRowsCount} skipped):`);
 
         if (result.invalidRows && result.invalidRows.length > 0) {
           result.invalidRows.slice(0, 3).forEach((row, idx) => {
@@ -860,9 +945,281 @@ function showSyncResult(result, sheetName, tableName, envLabel) {
       // Success without warnings - show toast
       const deleted = result.deletedCount !== undefined ? `, Deleted: ${result.deletedCount}` : "";
       const toastMessage = `Created: ${summary.created}, Updated: ${summary.updated}, Skipped: ${summary.skipped}${deleted}`;
-      spreadsheet.toast(toastMessage, `✅ ${envLabel} Sync: ${sheetName}`, 5);
+      spreadsheet.toast(toastMessage, `${envLabel} Sync: ${sheetName}`, 5);
     }
   } else {
     ui.alert("Sync Error", `Failed to sync: ${result.error || "Unknown error"}`, ui.ButtonSet.OK);
   }
+}
+
+/**
+ * Internal function to sync all sheets to specified environment using batch processing
+ * @param {"prod" | "dev"} env - Target environment
+ */
+function syncAllSheets_(env) {
+  const ui = SpreadsheetApp.getUi();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const envLabel = env === "prod" ? "Production" : "Development";
+
+  // Production requires extra confirmation
+  if (env === "prod") {
+    const firstConfirm = ui.alert(
+      "Production Sync - All Sheets",
+      `You are about to sync ALL sheets to PRODUCTION database.\n\nThis will modify live data for multiple tables.\n\nAre you sure?`,
+      ui.ButtonSet.YES_NO
+    );
+
+    if (firstConfirm !== ui.Button.YES) {
+      spreadsheet.toast("Production sync cancelled.", "Cancelled", 3);
+      return;
+    }
+
+    // Second confirmation for production
+    const secondConfirm = ui.alert(
+      "Final Confirmation",
+      `FINAL WARNING: This action will sync all sheets to PRODUCTION.\n\nType 'YES' mentally and click OK to proceed.`,
+      ui.ButtonSet.OK_CANCEL
+    );
+
+    if (secondConfirm !== ui.Button.OK) {
+      spreadsheet.toast("Production sync cancelled.", "Cancelled", 3);
+      return;
+    }
+  } else {
+    const response = ui.alert(
+      `Sync All Sheets to ${envLabel}`,
+      `This will sync ALL sheets to ${envLabel} Admin. Continue?`,
+      ui.ButtonSet.YES_NO
+    );
+
+    if (response !== ui.Button.YES) {
+      return;
+    }
+  }
+
+  const sheets = spreadsheet.getSheets();
+  const results = [];
+
+  // Get mapping configuration once
+  const sheetTableMap = getSheetTableMap();
+  const spreadsheetId = spreadsheet.getId();
+
+  for (const sheet of sheets) {
+    const sheetName = sheet.getName();
+
+    // Skip hidden sheets, sheets starting with #, and the mapping sheet itself
+    if (sheet.isSheetHidden() || sheetName.startsWith("#") || sheet.getSheetId() === MAPPING_SHEET_ID) {
+      continue;
+    }
+
+    const config = sheetTableMap[sheetName] || {};
+    const tableName = config.tableName || toKebabCase(sheetName);
+
+    try {
+      // Use batch webhook - no CSV generation needed
+      const result = callBatchWebhook({
+        tableName,
+        sheetName,
+        spreadsheetId,
+        env,
+        exact: config.exact,
+        filters: config.filters,
+      });
+      results.push({
+        sheet: sheetName,
+        table: tableName,
+        success: true,
+        summary: result.summary,
+        processedBatches: result.processedBatches,
+        totalBatches: result.totalBatches,
+      });
+    } catch (error) {
+      results.push({
+        sheet: sheetName,
+        table: tableName,
+        success: false,
+        error: error.message,
+      });
+    }
+  }
+
+  // Show summary
+  const successCount = results.filter((r) => r.success).length;
+  const failCount = results.filter((r) => !r.success).length;
+
+  if (failCount > 0) {
+    // Show alert for failures
+    let message = `[${envLabel}] Synced ${successCount} sheets successfully.\n`;
+    message += `${failCount} sheets failed.\n\n`;
+    message += "Failed sheets:\n";
+    results
+      .filter((r) => !r.success)
+      .forEach((r) => {
+        message += `- ${r.sheet}: ${r.error}\n`;
+      });
+    ui.alert("Sync Complete with Errors", message, ui.ButtonSet.OK);
+  } else {
+    // Show toast for success with batch info
+    const totalBatches = results.reduce((sum, r) => sum + (r.processedBatches || 0), 0);
+    spreadsheet.toast(
+      `Successfully synced ${successCount} sheets (${totalBatches} batches total).`,
+      `${envLabel} Sync Complete`,
+      5
+    );
+  }
+}
+
+/**
+ * Syncs all sheets to Production Admin
+ */
+function syncAllSheetsToAdmin() {
+  syncAllSheets_("prod");
+}
+
+/**
+ * Syncs all sheets to Development Admin
+ */
+function syncAllSheetsToDevAdmin() {
+  syncAllSheets_("dev");
+}
+
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Internal function to sync sheet to specified environment using batch processing
+ * Server reads directly from Google Sheets - no CSV generation needed
+ * @param {"prod" | "dev"} env - Target environment
+ */
+function syncSheet_(env) {
+  const ui = SpreadsheetApp.getUi();
+  const sheet = SpreadsheetApp.getActiveSheet();
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const sheetName = sheet.getName();
+
+  // Get mapping configuration
+  const sheetTableMap = getSheetTableMap();
+  const config = sheetTableMap[sheetName] || {};
+
+  // Get table name from mapping or convert sheet name to kebab-case
+  const tableName = config.tableName || toKebabCase(sheetName);
+  const envLabel = env === "prod" ? "Production" : "Development";
+
+  // Production sync requires additional confirmation
+  if (env === "prod") {
+    const confirmation = ui.alert(
+      "Production Sync Confirmation",
+      `You are about to sync "${sheetName}" to PRODUCTION database.\n\nTable: ${tableName}\nThis will modify live data.\n\nAre you sure you want to continue?`,
+      ui.ButtonSet.YES_NO
+    );
+
+    if (confirmation !== ui.Button.YES) {
+      spreadsheet.toast("Production sync cancelled.", "Cancelled", 3);
+      return;
+    }
+  }
+
+  try {
+    spreadsheet.toast(`Syncing to ${envLabel}...`, "Batch Sync", 10);
+
+    // Use batch webhook - no CSV generation needed, server reads directly from sheet
+    const result = callBatchWebhook({
+      tableName,
+      sheetName,
+      spreadsheetId: spreadsheet.getId(),
+      env,
+      exact: config.exact,
+      filters: config.filters,
+    });
+
+    // Show batch result with progress information
+    showBatchSyncResult(result, sheetName, tableName, envLabel);
+  } catch (error) {
+    showSyncError(error, sheetName, tableName, envLabel);
+    console.error("Sync error:", error);
+  }
+}
+
+/**
+ * Syncs the currently active sheet to Production Admin
+ */
+function syncToAdmin() {
+  syncSheet_("prod");
+}
+
+/**
+ * Syncs the currently active sheet to Development Admin
+ */
+function syncToDevAdmin() {
+  syncSheet_("dev");
+}
+
+/**
+ * Internal function to test connection to specified environment
+ * @param {"prod" | "dev"} env - Target environment
+ */
+function testConnection_(env) {
+  const ui = SpreadsheetApp.getUi();
+  const baseUrl = env === "prod" ? CONFIG.ADMIN_URL : CONFIG.DEV_ADMIN_URL;
+  const envLabel = env === "prod" ? "Production" : "Development";
+
+  try {
+    // Simple test - try to access the API
+    const response = UrlFetchApp.fetch(`${baseUrl}/api/health`, {
+      method: "get",
+      muteHttpExceptions: true,
+    });
+
+    const status = response.getResponseCode();
+
+    if (status === 200 || status === 404) {
+      ui.alert(
+        `${envLabel} Connection Test`,
+        `Connection successful!\n\nServer: ${baseUrl}\nStatus: ${status}`,
+        ui.ButtonSet.OK
+      );
+    } else {
+      ui.alert(
+        `${envLabel} Connection Test`,
+        `Server responded with status ${status}\n\nServer: ${baseUrl}`,
+        ui.ButtonSet.OK
+      );
+    }
+  } catch (error) {
+    ui.alert(
+      `${envLabel} Connection Test`,
+      `Connection failed!\n\nServer: ${baseUrl}\nError: ${error.message}`,
+      ui.ButtonSet.OK
+    );
+  }
+}
+
+/**
+ * Tests the connection to Development Admin server
+ */
+function testConnectionDev() {
+  testConnection_("dev");
+}
+
+/**
+ * Tests the connection to Production Admin server
+ */
+function testConnectionProd() {
+  testConnection_("prod");
+}
+
+/**
+ * Converts camelCase or PascalCase to kebab-case
+ * Also handles spaces and existing hyphens
+ * Examples:
+ *   "labAssets" -> "lab-assets"
+ *   "globalConfig" -> "global-config"
+ *   "MySheetName" -> "my-sheet-name"
+ *   "already-kebab" -> "already-kebab"
+ */
+function toKebabCase(str) {
+  return str
+    .replace(/([a-z])([A-Z])/g, "$1-$2") // Insert hyphen between camelCase
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2") // Handle consecutive caps like "XMLParser" -> "xml-parser"
+    .replace(/\s+/g, "-") // Replace spaces with hyphens
+    .toLowerCase();
 }

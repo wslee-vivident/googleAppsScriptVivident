@@ -1,8 +1,5 @@
 function transferToScriptGenerator() {
-    const targetId = PropertiesService.getScriptProperties().getProperty("SCRIPT_GENERATOR");
-
-    const targetFile = SpreadsheetApp.openById(targetId);
-    const targetSheet = targetFile.getSheetByName("GENERATOR");
+    const targetSheet = SpreadsheetApp.getActive().getSheetByName("scripts");
     const targetHeader = targetSheet.getDataRange().getValues()[0];
     const targetH = makeHeaderIndex_(targetHeader);
 
@@ -47,7 +44,7 @@ function transferToScriptGenerator() {
             startRow[targetH["type"]] = "배경";
             startRow[targetH["spaceName"]] = sceneMainInfo[sceneId]?.location || "";
             startRow[targetH["shot"]] = 1;
-            startRow[targetH["FX"]] = 1;
+            startRow[targetH["FX"]] = 0;
             outputData.push(startRow);
         }
         
@@ -59,17 +56,20 @@ function transferToScriptGenerator() {
         const inputReplyText = row[generatedScriptH["reply_text"]];
         let tag = "";
 
+        currentRow[targetH["sceneId"]] = sceneId;
+        currentRow[targetH["shot"]] = 1;
+        currentRow[targetH["FX"]] = 1;
+
         // 현재 행이 "선택지"가 아니고, 쌓여있는 "선택지 답변(selectionData)"이 있다면 지금 출력
         if(inputSpeaker !== "선택지" && selectionData.length > 0) {
             outputData.push(...selectionData);
             selectionData = [];
 
             currentRow[targetH["tag"]] = "#end";
+            currentRow[targetH["shot"]] = 2;
         }
 
-        currentRow[targetH["sceneId"]] = sceneId;
-        currentRow[targetH["shot"]] = 1;
-        currentRow[targetH["FX"]] = 1;
+        
         switch(inputSpeaker) {
             case "지문":
                 currentRow[targetH["type"]] = "지문";
@@ -85,11 +85,14 @@ function transferToScriptGenerator() {
                   const branchRow = new Array(columns).fill("");
                   branchRow[targetH["sceneId"]] = sceneId;
                   branchRow[targetH["type"]] = "브랜치";
+                  branchRow[targetH["FX"]] = 2;
+                  branchRow[targetH["shot"]] = 1;
                   outputData.push(branchRow);
                 }
 
                 currentRow[targetH["type"]] = "선택지";
                 currentRow[targetH["Text"]] = inputText;
+                currentRow[targetH["value"]] = inputChoiceGrade;
 
                 if(inputChoiceGrade === "COOL") tag = "#1";
                 else if(inputChoiceGrade === "BRILLIANT") tag = "#2";
@@ -106,7 +109,7 @@ function transferToScriptGenerator() {
                 choiceValues[targetH["tag"]] = tag;
                 choiceValues[targetH["next"]] = "#end";
                 choiceValues[targetH["FX"]] = 1;
-                choiceValues[targetH["shot"]] = 1;
+                choiceValues[targetH["shot"]] = 2;
                 selectionData.push(choiceValues);
                 break;
             default:
@@ -129,6 +132,8 @@ function transferToScriptGenerator() {
             const endRow = new Array(columns).fill("");
             endRow[targetH["sceneId"]] = sceneId;
             endRow[targetH["type"]] = "종료";
+            endRow[targetH["FX"]] = 2;
+            endRow[targetH["shot"]] = 2;
             outputData.push(endRow);
         }
     }

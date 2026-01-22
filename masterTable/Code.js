@@ -33,9 +33,10 @@ function onOpen()
 
   var menu3 = ui.createMenu("Sync")
     .addItem("Dev Push", "syncToDevAdmin")
-    
+    .addItem("Dev Selected Push", "pushSelectedRowsDev")
     .addSubMenu(
       ui.createMenu("🛠️ Development")
+         .addItem("pushSelectedRowsDev", "pushSelectedRowsDev")
         .addItem("PUSH to Dev Admin", "syncToDevAdmin")
         .addItem("PULL from Dev Admin", "pullFromDevAdmin")
         // .addItem("Push All Sheets", "syncAllSheetsToDevAdmin")
